@@ -281,7 +281,12 @@ async function diagnose(){
   document.getElementById('results').style.display='none';
   document.getElementById('diagBtn').disabled=true;
   const profile=[gender,age].filter(Boolean).join('、');
-  const prompt=`あなたは腸活専門の栄養アドバイザーです。以下の食事内容を分析し、腸活スコアをJSON形式のみで返してください。\n${profile?`【プロフィール】${profile}`:''}\n【朝食】${morning||'（未入力）'}\n【昼食】${lunch||'（未入力）'}\n【夕食】${dinner||'（未入力）'}\n以下のJSON構造のみを返してください（マークダウン・説明文は一切不要）:\n{"totalScore":数値(0-100),"scoreLabel":"一言ラベル","categories":[{"name":"食物繊維","score":数値},{"name":"発酵食品","score":数値},{"name":"タンパク質","score":数値},{"name":"脂質バランス","score":数値}],"advice":{"morning":"朝アドバイス","lunch":"昼アドバイス","dinner":"夜アドバイス"},"improvements":["改善1","改善2","改善3"]}`;
+  const meals=[];
+  if(morning) meals.push(`【朝食】${morning}`);
+  if(lunch) meals.push(`【昼食】${lunch}`);
+  if(dinner) meals.push(`【夕食】${dinner}`);
+  const mealText=meals.join('\n');
+  const prompt=`あなたは腸活専門の栄養アドバイザーです。以下に入力された食事のみを評価してください。未入力の食事は評価しないでください。入力された食事単体として100点満点で腸活スコアを評価し、JSON形式のみで返してください。\n${profile?`【プロフィール】${profile}\n`:''}\n${mealText}\n以下のJSON構造のみを返してください（マークダウン・説明文は一切不要）:\n{"totalScore":数値(0-100),"scoreLabel":"一言ラベル","categories":[{"name":"食物繊維","score":数値},{"name":"発酵食品","score":数値},{"name":"タンパク質","score":数値},{"name":"脂質バランス","score":数値}],"advice":{"morning":${morning?'"朝食へのアドバイス"':'null'},"lunch":${lunch?'"昼食へのアドバイス"':'null'},"dinner":${dinner?'"夕食へのアドバイス"':'null'}},"improvements":["改善1","改善2","改善3"]}`;
   try{
     const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
@@ -304,9 +309,20 @@ async function diagnose(){
     animateRing(score);setChara(score);
     document.getElementById('scoreLabel').textContent=result.scoreLabel||'';
     renderCatBars(result.categories||[]);
-    document.getElementById('adv-morning').textContent=result.advice?.morning||'';
-    document.getElementById('adv-lunch').textContent=result.advice?.lunch||'';
-    document.getElementById('adv-dinner').textContent=result.advice?.dinner||'';
+    // アドバイスタブは入力した食事のみ表示
+    const advTabs=document.querySelectorAll('.adv-tab');
+    const advMap={morning,lunch,dinner};
+    const advKeys=['morning','lunch','dinner'];
+    advTabs.forEach(t=>t.style.display='none');
+    document.querySelectorAll('.adv-panel').forEach(p=>{p.style.display='none';p.classList.remove('active');});
+    let firstAdv=null;
+    advKeys.forEach((k,i)=>{
+      if(advMap[k]&&result.advice?.[k]){
+        document.getElementById('adv-'+k).textContent=result.advice[k];
+        advTabs[i].style.display='flex';
+        if(!firstAdv){firstAdv=k;advTabs[i].classList.add('active');document.getElementById('adv-'+k).classList.add('active');document.getElementById('adv-'+k).style.display='block';}
+      }
+    });
     const imp=document.getElementById('impList');
     imp.innerHTML='';
     (result.improvements||[]).forEach(p=>{imp.innerHTML+=`<li>${p}</li>`;});
